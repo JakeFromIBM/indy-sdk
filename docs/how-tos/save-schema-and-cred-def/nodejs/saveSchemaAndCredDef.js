@@ -13,6 +13,8 @@
  * To assert the changes, Trust Anchor reads both the Verkey from the wallet and the Verkey from the ledger
  * using GET_NYM request, to make sure they are equal to the new Verkey, not the original one
  * added by Steward
+ * 
+ * 
  */
 
 const indy = require('indy-sdk')
@@ -59,8 +61,8 @@ async function run() {
     try {
         await indy.createWallet(walletName, walletCredentials)
     } catch {
-        await indy.deleteWallet(walletName,walletCredentials)
-        await indy.createWallet(walletName,walletCredentials)
+        await indy.deleteWallet(walletName, walletCredentials)
+        await indy.createWallet(walletName, walletCredentials)
     }
 
     // 4.
@@ -100,65 +102,63 @@ async function run() {
         /*ver_key*/ trustAnchorVerkey,
         /*alias*/ undefined,
         /*role*/ 'TRUST_ANCHOR')
+    logValue('NYM txn request', nymRequest)
 
     // 8.
     log('8. Sending NYM request to the ledger')
-    await indy.signAndSubmitRequest(/*pool_handle*/ poolHandle,
+    const nymResponse = await indy.signAndSubmitRequest(/*pool_handle*/ poolHandle,
         /*wallet_handle*/ walletHandle,
         /*submitter_did*/ stewardDid,
         /*request_json*/ nymRequest)
+    logValue('NYM txn response', nymResponse)
 
     // 9.
-    log('9. Generating new verkey of trust anchor in wallet')
-    const newVerkey = await indy.replaceKeysStart(walletHandle, trustAnchorDid, "{}")
-    logValue('New Trust Anchor Verkey: ', newVerkey)
+    log('9. Issuer create Credential Schema')
+    const schema = {
+        'name': 'gvt',
+        'version': '1.0',
+        'attributes': ['age', 'sex', 'height', 'name']
+    }
+
+    const [issuerSchemaId, issuerSchemaJson] = await indy.issuerCreateSchema(stewardDid,
+        schema['name'],
+        schema['version'],
+        schema['attributes'])
+    logValue('Schema ID: ', issuerSchemaId)
+    logValue('Schema: ', issuerSchemaJson)
 
     // 10.
-    log('10. Building NYM request to update new verkey to ledger')
-    const nymRequestForNewVerkey = await indy.buildNymRequest(trustAnchorDid, trustAnchorDid, newVerkey, undefined, 'TRUST_ANCHOR')
+    log('10. Build the SCHEMA request to add new schema to the ledger as a Steward')
+    const schemaRequest = await indy.buildSchemaRequest(stewardDid, issuerSchemaJson)
+    logValue('Schema Request: ', schemaRequest)
 
-    // 11.
-    log('11. Sending NYM request to the ledger')
-    await indy.signAndSubmitRequest(poolHandle, walletHandle, trustAnchorDid, nymRequestForNewVerkey)
+    // 11
+    log('11. Sending the SCHEMA request to the ledger')
+    const schemaResponse = await indy.signAndSubmitRequest(poolHandle, walletHandle, stewardDid, schemaRequest)
+    logValue('Schema Response: ', schemaResponse)
 
     // 12.
-    log('12. Apply new verkey in wallet')
-    await indy.replaceKeysApply(walletHandle, trustAnchorDid)
+    log('12. Creating and storing CRED DEFINITION using anoncreds as Trust Anchor, for the given Schema')
+    const credDefTag = 'credDefTag'
+    const credDefType = 'CL'
+    const credDefConfig = { "supportRevocation": false }
+  
+    const [credDefId, credDefJson] = await indy.issuerCreateAndStoreCredentialDef(walletHandle, trustAnchorDid, issuerSchemaJson,
+        credDefTag, credDefType, credDefConfig)
+    logValue('Cred Def ID: ', credDefId)
+    logValue('Credential definition: ', credDefJson)
 
     // 13.
-    log('13. Reading new verkey from wallet')
-    const trustAnchorVerkeyInWallet = await indy.keyForLocalDid(walletHandle, trustAnchorDid)
-    logValue('Trust Anchor Verkey in wallet: ', trustAnchorVerkeyInWallet)
-
-    // 14.
-    log('14. Building GET_NYM request to get Trust Anchor verkey')
-    const getNymRequest = await indy.buildGetNymRequest(trustAnchorDid, trustAnchorDid)
-
-    // 15.
-    log('15. Sending GET_NYM request to ledger')
-    const getNymResponse = await indy.submitRequest(poolHandle, getNymRequest)
-
-    // 16.
-    log('16. Comparing Trust Anchor verkeys: written by Steward (original), current in wallet and current from ledger')
-    logValue('Written by Steward: ', trustAnchorVerkey)
-    logValue('Trust Anchor Verkey in wallet: ', trustAnchorVerkeyInWallet)
-    const trustAnchorVerkeyFromLedger = JSON.parse(getNymResponse['result']['data'])['verkey']
-    logValue('Trust Anchor Verkey from ledger: ', trustAnchorVerkeyFromLedger)
-    logValue('Matching: ', trustAnchorVerkeyFromLedger == trustAnchorVerkeyInWallet != trustAnchorVerkey)
-
-    // Do some cleanup.
-
-    // 17.
-    log('17. Closing wallet and pool')
+    log('13. Closing wallet and pool')
     await indy.closeWallet(walletHandle)
     await indy.closePoolLedger(poolHandle)
 
-    // 18.
-    log('18. Deleting created wallet')
+    // 14.
+    log('14. Deleting created wallet')
     await indy.deleteWallet(walletName, walletCredentials)
 
-    // 19.
-    log('19. Deleting pool ledger config')
+    // 15.
+    log('16. Deleting pool ledger config')
     await indy.deletePoolLedgerConfig(poolName)
 
 }
@@ -168,3 +168,4 @@ try {
 } catch (e) {
     log("ERROR occurred : e")
 }
+

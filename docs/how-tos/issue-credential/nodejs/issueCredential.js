@@ -17,8 +17,8 @@
  */
 
 const indy = require('indy-sdk')
-const util = require('../indy-sdk/docs/how-tos/write-did-and-query-verkey/nodejs/util')
-const colors = require('../indy-sdk/docs/how-tos/write-did-and-query-verkey/nodejs/colors')
+const util = require('./util')
+const colors = require('./colors')
 
 
 const log = console.log
@@ -28,9 +28,6 @@ function logValue() {
 }
 
 async function run() {
-
-
-    const proverDid = 'VsKV7grR1BUE29mG2Fm2kX'
 
     log("Set protocol version 2 to work with Indy Node 1.4")
     await indy.setProtocolVersion(2)
@@ -57,32 +54,17 @@ async function run() {
     const poolHandle = await indy.openPoolLedger(poolName)
 
     // 3.
-    log("3. Creates Issuer wallet and opens it to get handle.")
-    const issuerWalletName = { "id": "issuerWallet" }
-    const issuerWalletCredentials = { "key": "issuerWalletKey" }
+    log('3. Creating new secure wallet and open wallet to get handle')
+    const issuerWalletConfig = { "id": "wallet" }
+    const issuerWalletCredentials = { "key": "walletKey" }
     try {
-        await indy.createWallet(issuerWalletName, issuerWalletCredentials)
+        await indy.createWallet(issuerWalletConfig, issuerWalletCredentials)
     } catch {
-        await indy.deleteWallet(issuerWalletName, issuerWalletCredentials)
-        await indy.createWallet(issuerWalletName, issuerWalletCredentials)
+        await indy.deleteWallet(issuerWalletConfig, issuerWalletCredentials)
+        await indy.createWallet(issuerWalletConfig, issuerWalletCredentials)
     }
 
-    const issuerWalletHandle = await indy.openWallet(issuerWalletName, issuerWalletCredentials)
-
-    // 4.
-    log("4. Creates Prover wallet and opens it to get handle.")
-    const proverWalletName = { "id": "proverWallet" }
-    const proverWalletCredentials = { "key": "proverWalletKey" }
-    try {
-        await indy.createWallet(proverWalletName, proverWalletCredentials)
-    } catch {
-        await indy.deleteWallet(proverWalletName, proverWalletCredentials)
-        await indy.createWallet(proverWalletName, proverWalletCredentials)
-    }
-
-    const proverWalletHandle = await indy.openWallet(proverWalletName, proverWalletCredentials)
-
-
+    const issuerWalletHandle = await indy.openWallet(issuerWalletConfig, issuerWalletCredentials)
 
     // First, put a steward DID and its keypair in the wallet. This doesn't write anything to the ledger,
     // but it gives us a key that we can use to sign a ledger transaction that we're going to submit later.
@@ -93,42 +75,42 @@ async function run() {
     // when creating this DID--it guarantees that the same DID and key material are created that the genesis txns
     // expect.
 
-    // 5.
-    log('5. Generating and storing steward DID and verkey')
+    // 4.
+    log('4. Generating and storing steward DID and verkey')
     const stewardSeed = '000000000000000000000000Steward1'
-    const didInfo = { 'seed': stewardSeed }
-    const [stewardDid, stewardVerkey] = await indy.createAndStoreMyDid(issuerWalletHandle, didInfo)
+    const did = { 'seed': stewardSeed }
+    const [stewardDid, stewardVerkey] = await indy.createAndStoreMyDid(issuerWalletHandle, did)
     logValue('Steward DID: ', stewardDid)
     logValue('Steward Verkey: ', stewardVerkey)
 
     // Now, create a new DID and verkey for a trust anchor, and store it in our wallet as well. Don't use a seed;
     // this DID and its keys are secure and random. Again, we're not writing to the ledger yet.
 
-    // 6.
-    log('6. Generating and storing Issuer DID and verkey')
-    const [issuerDid, issuerVerkey] = await indy.createAndStoreMyDid(issuerWalletHandle, {})
-    logValue('Issuer DID: ', issuerDid)
-    logValue('Issuer Verkey: ', issuerVerkey)
+    // 5.
+    log('5. Generating and storing trust anchor DID and verkey')
+    const [trustAnchorDid, trustAnchorVerkey] = await indy.createAndStoreMyDid(issuerWalletHandle, {})
+    logValue('Trust anchor DID: ', trustAnchorDid)
+    logValue('Trust anchor Verkey: ', trustAnchorVerkey)
 
-    // 7.
-    log('7. Building NYM request to add Trust Anchor to the ledger')
+    // 6.
+    log('6. Building NYM request to add Trust Anchor to the ledger')
     const nymRequest = await indy.buildNymRequest(/*submitterDid*/ stewardDid,
-        /*targetDid*/ issuerDid,
-        /*verKey*/ issuerVerkey,
+        /*targetDid*/ trustAnchorDid,
+        /*verKey*/ trustAnchorVerkey,
         /*alias*/ undefined,
         /*role*/ 'TRUST_ANCHOR')
     logValue('NYM txn request', nymRequest)
 
-    // 8.
-    log('8. Sending NYM request to the ledger')
+    // 7.
+    log('7. Sending NYM request to the ledger')
     const nymResponse = await indy.signAndSubmitRequest(/*poolHandle*/ poolHandle,
         /*walletHandle*/ issuerWalletHandle,
         /*submitterDid*/ stewardDid,
         /*requestJson*/ nymRequest)
     logValue('NYM txn response', nymResponse)
 
-    // 9.
-    log('9. Issuer create Credential Schema')
+    // 8.
+    log('8. Issuer create Credential Schema')
     const schema = {
         'name': 'gvt',
         'version': '1.0',
@@ -142,42 +124,54 @@ async function run() {
     logValue('Schema ID: ', issuerSchemaId)
     logValue('Schema: ', issuerSchemaJson)
 
-    // 10.
+    // 9.
     log('9. Build the SCHEMA request to add new schema to the ledger as a Steward')
     const schemaRequest = await indy.buildSchemaRequest(stewardDid, issuerSchemaJson)
     logValue('Schema Request: ', schemaRequest)
 
-    // 11.
+    // 10.
     log('10. Sending the SCHEMA request to the ledger')
     const schemaResponse = await indy.signAndSubmitRequest(poolHandle, issuerWalletHandle, stewardDid, schemaRequest)
     logValue('Schema Response: ', schemaResponse)
 
-    // 12.
-    log('12. Creating and storing CRED DEFINITION using anoncreds as Trust Anchor, for the given Schema')
+    // 11.
+    log('11. Creating and storing CRED DEFINITION using anoncreds as Trust Anchor, for the given Schema')
     const credDefTag = 'credDefTag'
     const credDefType = 'CL'
     const credDefConfig = { "supportRevocation": false }
 
-    const [credDefId, credDefJson] = await indy.issuerCreateAndStoreCredentialDef(issuerWalletHandle, issuerDid, issuerSchemaJson,
+    const [credDefId, credDefJson] = await indy.issuerCreateAndStoreCredentialDef(issuerWalletHandle, trustAnchorDid, issuerSchemaJson,
         credDefTag, credDefType, credDefConfig)
     logValue('Cred Def ID: ', credDefId)
     logValue('Credential definition: ', credDefJson)
 
+    // 12.
+    log('12. Creating Prover wallet and opening it to get the handle.')
+    const proverDid = 'VsKV7grR1BUE29mG2Fm2kX'
+    const proverWalletConfig = { "id": "proverWallet" }
+    const proverWalletCredentials = { "key": "proverWalletKey" }
+    try {
+        await indy.createWallet(proverWalletConfig, proverWalletCredentials)
+    } catch {
+        await indy.deleteWallet(proverWalletConfig, proverWalletCredentials)
+        await indy.createWallet(proverWalletConfig, proverWalletCredentials)
+    }
+    const proverWalletHandle = await indy.openWallet(proverWalletConfig, proverWalletCredentials)
 
-    // 14.
-    log('14. Prover is creating Link Secret')
+    // 13.
+    log('13. Prover is creating Link Secret')
     const proverLinkSecretName = 'linkSecret'
     const linkSecretId = await indy.proverCreateMasterSecret(proverWalletHandle,
         proverLinkSecretName)
 
-    // 15.
-    log('15. Issuer (Trust Anchor) is creating a Credential Offer for Prover')
+    // 14.
+    log('14. Issuer (Trust Anchor) is creating a Credential Offer for Prover')
     const credOfferJson = await indy.issuerCreateCredentialOffer(issuerWalletHandle,
         credDefId)
     logValue('Credential Offer: ', credOfferJson)
 
-    // 16.
-    log('16. Prover creates Credential Request for the given credential offer')
+    // 15.
+    log('15. Prover creates Credential Request for the given credential offer')
     const [credReqJson, credReqMetadataJson] = await indy.proverCreateCredentialReq(proverWalletHandle,
         proverDid,
         credOfferJson,
@@ -185,115 +179,44 @@ async function run() {
         proverLinkSecretName)
     logValue('Credential Request: ', credReqJson)
 
-    // 17.
-    log('17. Issuer (Trust Anchor) creates Credential for Credential Request')
+    // 16.
+    log('16. Issuer (Trust Anchor) creates Credential for Credential Request')
     const credValuesJson = {
         "sex": { "raw": "male", "encoded": "5944657099558967239210949258394887428692050081607692519917050011144233" },
         "name": { "raw": "Alex", "encoded": "1139481716457488690172217916278103335" },
         "height": { "raw": "175", "encoded": "175" },
         "age": { "raw": "28", "encoded": "28" }
     }
-    const tailsWriterConfig = { 'base_dir': util.getPathToIndyClientHome() + "/tails", 'uri_pattern': '' }
-    const blobStorageReaderHandle = await indy.openBlobStorageReader('default', tailsWriterConfig)
-
     const [credJson] = await indy.issuerCreateCredential(issuerWalletHandle,
         credOfferJson,
         credReqJson,
-        credValuesJson, undefined, blobStorageReaderHandle)
+        credValuesJson, undefined, -1)
     logValue('Credential: ', credJson)
 
-    // 18.
-    log('18. Prover processes and stores received Credential')
-    const outCredId = await indy.proverStoreCredential(proverWalletHandle, null,
+    // 17.
+    log('17. Prover processes and stores received Credential')
+    const outCredID = await indy.proverStoreCredential(proverWalletHandle, null,
         credReqMetadataJson,
         credJson,
         credDefJson, null)
-    logValue('Store Credential is {}', outCredId)
+    logValue('Store Credential is {}', outCredID)
 
-    // 19.
-    log("19. Prover gets Credentials for Proof Request")
-    const proofRequest = {
-        'nonce': '123432421212',
-        'name': 'proof_req_1',
-        'version': '0.1',
-        'requested_attributes': {
-            'attr1_referent': {
-                'name': 'name',
-                'restrictions': [{
-                    'cred_def_id': credDefId
-                    /*
-                    'issuer_did': issuerDid,
-                    'schema_key': schemaKey
-                    */
-                }]
-            }
-        },
-        'requested_predicates': {
-            'predicate1_referent': {
-                'name': 'age',
-                'p_type': '>=',
-                'p_value': 18,
-                'restrictions': [{ 'issuer_did': issuerDid }]
-            }
-        }
-    }
-    const credsForProofRequest = await indy.proverGetCredentialsForProofReq(proverWalletHandle, proofRequest)
-
-    // 20. 
-    log("20. Prover creates Proof for Proof Request")
-    const credForAttr1 = credsForProofRequest["attrs"]["attr1_referent"]
-    const referent = credForAttr1[0].cred_info.referent
-    const requestedCredentials = {
-        "self_attested_attributes": {},
-        "requested_attributes": {
-            "attr1_referent": {
-                cred_id: referent,
-                revealed: true
-            }
-        },
-        "requested_predicates": {
-            "predicate1_referent": {
-                cred_id: referent
-            }
-        }
-    }
-    const schemas = {
-        [issuerSchemaId]: issuerSchemaJson
-    }
-    const credentialDefs = {
-        [credDefId]: credDefJson
-    }
-    const revocRegs = {}
-    const revRegs = {}
-    const proof = await indy.proverCreateProof(proverWalletHandle, proofRequest, requestedCredentials, proverLinkSecretName, schemas, credentialDefs, revocRegs)
-    logValue("Proof after request: ", proof)
-
-    // 21.
-    log("21. Verifier is verifying proof from Prover")
-    const verified = await indy.verifierVerifyProof(proofRequest, proof, schemas, credentialDefs, revocRegs, revRegs)
-
-    logValue("Proof :")
-    logValue(". Name="+proof['requested_proof']['revealed_attrs']['attr1_referent']['raw'])
-    logValue(". Verified="+verified)
-
-
-    // 22.
-    log('22. Closing both walletHandles and pool')
+    // 18.
+    log('18. Closing both walletHandles and pool')
     await indy.closeWallet(issuerWalletHandle)
     await indy.closeWallet(proverWalletHandle)
     await indy.closePoolLedger(poolHandle)
 
-    // 23.
-    log('23. Deleting created walletHandles')
-    await indy.deleteWallet(issuerWalletName, issuerWalletCredentials)
-    await indy.deleteWallet(proverWalletName, proverWalletCredentials)
+    // 19.
+    log('19. Deleting created walletHandles')
+    await indy.deleteWallet(issuerWalletConfig, issuerWalletCredentials)
+    await indy.deleteWallet(proverWalletConfig, proverWalletCredentials)
 
-    // 24.
-    log('24. Deleting pool ledger config')
+    // 20.
+    log('20. Deleting pool ledger config')
     await indy.deletePoolLedgerConfig(poolName)
 
 }
-
 
 try {
     run()
