@@ -1,0 +1,22 @@
+{
+  "name": "samples",
+  "version": "1.0.0",
+  "description": "Demonstrates using NodeJS wrapper for LibIndy through creating and retrieving DIDs",
+  "main": "sendSecureMsg.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyperledger/indy-sdk.git"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/hyperledger/indy-sdk/issues"
+  },
+  "homepage": "https://github.com/hyperledger/indy-sdk#readme",
+  "dependencies": {
+    "prompts": "^2.3.2"
+  }
+}
