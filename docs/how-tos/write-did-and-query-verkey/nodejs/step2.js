@@ -6,8 +6,14 @@
     log('1. Creates a new local pool ledger configuration that is used later when connecting to ledger.')
     const poolName = 'pool'
     const genesisFilePath = await util.getPoolGenesisTxnPath(poolName)
-    const poolConfig = {'genesis_txn': genesisFilePath}
-    await indy.createPoolLedgerConfig(poolName, poolConfig)
+    const poolConfig = { 'genesis_txn': genesisFilePath }
+    try {
+        await indy.createPoolLedgerConfig(poolName, poolConfig)
+    } catch{
+        await indy.deletePoolLedgerConfig(poolName)
+        await indy.createPoolLedgerConfig(poolName, poolConfig)
+    }
+
 
     // 2.
     log('2. Open pool ledger and get handle from libindy')
@@ -15,8 +21,8 @@
 
     // 3.
     log('3. Creating new secure wallet')
-    const walletName = {"id": "wallet"}
-    const walletCredentials = {"key": "wallet_key"}
+    const walletName = { "id": "wallet" }
+    const walletCredentials = { "key": "wallet_key" }
     await indy.createWallet(walletName, walletCredentials)
 
     // 4.
